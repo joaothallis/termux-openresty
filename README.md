@@ -46,3 +46,7 @@ To start the server:
 openresty
 ```
 Access it at: `http://localhost:8080`
+### Managing the Server
+- **Stop**: `openresty -s stop`
+- **Reload**: `openresty -s reload` (apply config changes without stopping)
+- **Test Config**: `openresty -t`
