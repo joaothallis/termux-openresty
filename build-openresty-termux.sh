@@ -4,10 +4,11 @@
 
 set -e
 
-# Configuration - Change these if needed
+# Configuration
 OPENRESTY_VERSION="1.29.2.1"
 INSTALL_ROOT="$HOME/openresty-install"
-WRAPPER_BIN_DIR="$HOME/bin" # Must be in your $PATH
+WRAPPER_BIN_DIR="$HOME/bin"
+BUILD_DIR="/data/data/com.termux/files/usr/tmp/openresty-build"
 
 echo "--- Starting OpenResty $OPENRESTY_VERSION Build for Termux ---"
 
@@ -15,12 +16,16 @@ echo "--- Starting OpenResty $OPENRESTY_VERSION Build for Termux ---"
 echo "[1/8] Installing build dependencies..."
 pkg install -y clang make perl pcre2 openssl zlib wget
 
-# 2. Download and Extract
-if [ ! -d "openresty-$OPENRESTY_VERSION" ]; then
-    echo "[2/8] Downloading OpenResty source..."
+# 2. Download and Extract in a clean temp directory
+echo "[2/8] Preparing source..."
+rm -rf "$BUILD_DIR" && mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+if [ ! -f "openresty-$OPENRESTY_VERSION.tar.gz" ]; then
+    echo "Downloading OpenResty source..."
     wget -q "https://openresty.org/download/openresty-$OPENRESTY_VERSION.tar.gz"
-    tar -xzf "openresty-$OPENRESTY_VERSION.tar.gz"
 fi
+tar -xzf "openresty-$OPENRESTY_VERSION.tar.gz"
 cd "openresty-$OPENRESTY_VERSION"
 
 # 3. Configure
@@ -37,7 +42,6 @@ echo "[3/8] Configuring Nginx with Termux-specific flags..."
 # 4. Patch Epoll Module
 EPOLL_SRC="build/nginx-$(echo $OPENRESTY_VERSION | cut -d. -f1-3)/src/event/modules/ngx_epoll_module.c"
 echo "[4/8] Patching $EPOLL_SRC for Termux compatibility..."
-# Use : as delimiter to avoid conflict with | in C source
 sed -i 's:^#if (NGX_READ_EVENT != EPOLLIN|EPOLLRDHUP):#if 0:' "$EPOLL_SRC"
 sed -i 's:^#if (NGX_WRITE_EVENT != EPOLLOUT):#if 0:' "$EPOLL_SRC"
 
@@ -57,9 +61,7 @@ sed -i "s/listen       80;/listen       8080;/" "$INSTALL_ROOT/usr/local/openres
 # 7. Patch Hardcoded Paths in Binaries
 echo "[7/8] Patching hardcoded paths in scripts..."
 RESTY_BIN="$INSTALL_ROOT/usr/local/openresty/bin/resty"
-# Fix hardcoded nginx sbin path
 sed -i "s|/usr/local/openresty/nginx/sbin/nginx|$INSTALL_ROOT/usr/local/openresty/nginx/sbin/nginx|g" "$RESTY_BIN"
-# Fix hardcoded /tmp path for Termux
 sed -i "s|/tmp|/data/data/com.termux/files/usr/tmp|g" "$RESTY_BIN"
 
 # 8. Create Environment Wrappers
@@ -85,5 +87,9 @@ create_wrapper "nginx" "$INSTALL_ROOT/usr/local/openresty/nginx/sbin/nginx" "-p 
 create_wrapper "openresty" "$INSTALL_ROOT/usr/local/openresty/nginx/sbin/nginx" "-p $INSTALL_ROOT/usr/local/openresty/nginx"
 create_wrapper "resty" "$INSTALL_ROOT/usr/local/openresty/bin/resty" ""
 create_wrapper "opm" "$INSTALL_ROOT/usr/local/openresty/bin/opm" ""
+
+# Cleanup source to save space
+echo "Cleaning up build directory..."
+rm -rf "$BUILD_DIR"
 
 echo "--- Build Complete! ---"
